@@ -104,6 +104,29 @@ export function matrixToQuaternion(m) {
 }
 
 /**
+ * Quaternion NLERP: linear interpolation then normalize.
+ * Faster than SLERP but non-constant angular velocity.
+ *
+ * @param {number[]} q0 - Start unit quaternion [w, x, y, z]
+ * @param {number[]} q1 - End unit quaternion [w, x, y, z]
+ * @param {number} s - Interpolation parameter [0, 1]
+ * @returns {number[]} Interpolated unit quaternion [w, x, y, z]
+ */
+export function quaternionNlerp(q0, q1in, s) {
+  let q1 = q1in.slice();
+
+  // Ensure shortest path — negate q1 if dot < 0
+  const dot = q0[0]*q1[0] + q0[1]*q1[1] + q0[2]*q1[2] + q0[3]*q1[3];
+  if (dot < 0) q1 = q1.map(v => -v);
+
+  // Step 1: linear blend  q(s) = (1-s)·q0 + s·q1
+  const blended = q0.map((v, i) => (1 - s) * v + s * q1[i]);
+
+  // Step 2: normalize to unit quaternion
+  return quaternionNormalize(blended);
+}
+
+/**
  * Compute the geodesic angle Ω between two quaternions.
  */
 export function quaternionAngle(q0, q1) {

@@ -19,6 +19,8 @@ interface Props {
   Rs: number[];
   onR0Change: (R: number[]) => void;
   onR1Change: (R: number[]) => void;
+  overlayRs?: number[] | null;
+  overlayColor?: string;
 }
 
 function r3ToQuat(R: number[]): THREE.Quaternion {
@@ -42,6 +44,8 @@ interface ContentProps {
   R0: number[];
   R1: number[];
   Rs: number[];
+  overlayRs?: number[] | null;
+  overlayColor: string;
   activeTarget: 'start' | 'end';
   isDragging: React.MutableRefObject<boolean>;
   controlsRef: React.MutableRefObject<any>;
@@ -49,18 +53,21 @@ interface ContentProps {
   cb1: React.MutableRefObject<(R: number[]) => void>;
 }
 
-function SceneContent({ R0, R1, Rs, activeTarget, isDragging, controlsRef, cb0, cb1 }: ContentProps) {
+function SceneContent({ R0, R1, Rs, overlayRs, overlayColor, activeTarget, isDragging, controlsRef, cb0, cb1 }: ContentProps) {
   const ref0 = useRef<THREE.Group>(null);
   const ref1 = useRef<THREE.Group>(null);
   const refS = useRef<THREE.Group>(null);
+  const refO = useRef<THREE.Group>(null);
 
   // Keep latest prop values accessible in useFrame without stale closures
   const R0Ref = useRef(R0);
   const R1Ref = useRef(R1);
   const RsRef = useRef(Rs);
+  const overlayRef = useRef(overlayRs);
   R0Ref.current = R0;
   R1Ref.current = R1;
   RsRef.current = Rs;
+  overlayRef.current = overlayRs;
 
   // Sync React state → Three.js objects every frame.
   // useFrame is guaranteed to run after R3F commits, so refs are always set.
@@ -70,6 +77,7 @@ function SceneContent({ R0, R1, Rs, activeTarget, isDragging, controlsRef, cb0, 
       if (ref1.current) ref1.current.quaternion.copy(r3ToQuat(R1Ref.current));
     }
     if (refS.current) refS.current.quaternion.copy(r3ToQuat(RsRef.current));
+    if (refO.current && overlayRef.current) refO.current.quaternion.copy(r3ToQuat(overlayRef.current));
   });
 
   // Register mouseDown/mouseUp on TransformControls
@@ -99,6 +107,7 @@ function SceneContent({ R0, R1, Rs, activeTarget, isDragging, controlsRef, cb0, 
       <group ref={ref0}><PoseObject color="#4a9eff" opacity={0.6} /></group>
       <group ref={ref1}><PoseObject color="#ff6b6b" opacity={0.6} /></group>
       <group ref={refS}><PoseObject color="#51cf66" opacity={1} /></group>
+      {overlayRs && <group ref={refO}><PoseObject color={overlayColor} opacity={0.7} wireframe /></group>}
 
       <TransformControls
         ref={controlsRef}
@@ -113,7 +122,7 @@ function SceneContent({ R0, R1, Rs, activeTarget, isDragging, controlsRef, cb0, 
   );
 }
 
-export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change }: Props) {
+export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change, overlayRs, overlayColor = '#ffd43b' }: Props) {
   const [activeTarget, setActiveTarget] = useState<'start' | 'end'>('start');
 
   const controlsRef = useRef<any>(null);
@@ -129,6 +138,8 @@ export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change }: Props) 
       <Scene3D>
         <SceneContent
           R0={R0} R1={R1} Rs={Rs}
+          overlayRs={overlayRs}
+          overlayColor={overlayColor}
           activeTarget={activeTarget}
           isDragging={isDragging}
           controlsRef={controlsRef}

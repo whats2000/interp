@@ -32,6 +32,15 @@ const CARDS = [
     color: 'var(--accent-yellow)',
   },
   {
+    path: '/so3-nlerp',
+    group: 'SO(3)',
+    dim: '3D',
+    rep: 'Unit Quaternion (S³)',
+    method: 'NLERP vs SLERP',
+
+    color: 'var(--accent-purple)',
+  },
+  {
     path: '/se3-sclerp',
     group: 'SE(3)',
     dim: '3D',

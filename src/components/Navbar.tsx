@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { path: '/so2', label: 'SO(2) — De Moivre', group: 'SO(2)' },
   { path: '/so3-matrix', label: 'SO(3) — Matrix SLERP', group: 'SO(3)' },
   { path: '/so3-quaternion', label: 'SO(3) — Quaternion SLERP', group: 'SO(3)' },
+  { path: '/so3-nlerp', label: 'SO(3) — NLERP vs SLERP', group: 'SO(3)' },
   { path: '/se3-sclerp', label: 'SE(3) — ScLERP Matrix', group: 'SE(3)' },
   { path: '/se3-dual-quat', label: 'SE(3) — Dual Quaternion', group: 'SE(3)' },
   { path: '/se3-decoupled', label: 'SE(3) — Decoupled', group: 'SE(3)' },
