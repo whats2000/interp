@@ -164,13 +164,13 @@ export function dualQuatExp(dq) {
   // Real part of exp: cos(θ/2) + sin(θ/2)·ω̂
   const qr = [cosHT, sinHT*omegaHat[0], sinHT*omegaHat[1], sinHT*omegaHat[2]];
 
-  // Dual part: (-sin(θ/2)·(ω̂·d_vec)) + sin(θ/2)·d_perp/|ω̂| + cos(θ/2)·(moment - omDotD*ω̂)
-  // Simplified standard formula:
+  // Dual part: q_d = [-sin(θ/2)·(ω̂·s), sin(θ/2)·s_perp + cos(θ/2)·s_par]
+  // where s_par = (ω̂·s)·ω̂ and s_perp = s - s_par
   const qd = [
     -sinHT * omDotD,
-    sinHT * (dVec[0] - omDotD*omegaHat[0]) + cosHT * dVec[0], // approximate
-    sinHT * (dVec[1] - omDotD*omegaHat[1]) + cosHT * dVec[1],
-    sinHT * (dVec[2] - omDotD*omegaHat[2]) + cosHT * dVec[2],
+    sinHT * (dVec[0] - omDotD*omegaHat[0]) + cosHT * omDotD * omegaHat[0],
+    sinHT * (dVec[1] - omDotD*omegaHat[1]) + cosHT * omDotD * omegaHat[1],
+    sinHT * (dVec[2] - omDotD*omegaHat[2]) + cosHT * omDotD * omegaHat[2],
   ];
 
   return [...qr, ...qd];

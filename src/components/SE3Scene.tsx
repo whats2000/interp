@@ -1,7 +1,8 @@
 // SE(3) 3D scene — rotation + translation
-// Same fix as SO3Scene: TransformControls must be a SIBLING of its target.
+// Same useFrame fix as SO3Scene: refs are null when useEffect fires outside Canvas.
 
 import { useRef, useState, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene3D from './Scene3D';
@@ -43,46 +44,47 @@ function readX4(obj: THREE.Object3D): number[] {
   ];
 }
 
-export default function SE3Scene({ X0, X1, Xs, onX0Change, onX1Change, overlayXs, overlayColor = '#ffd43b' }: Props) {
-  const [activeTarget, setActiveTarget] = useState<'start' | 'end'>('start');
-  const [gizmoMode, setGizmoMode]       = useState<'translate' | 'rotate'>('rotate');
+interface ContentProps {
+  X0: number[];
+  X1: number[];
+  Xs: number[];
+  overlayXs?: number[] | null;
+  overlayColor: string;
+  activeTarget: 'start' | 'end';
+  gizmoMode: 'translate' | 'rotate';
+  isDragging: React.MutableRefObject<boolean>;
+  controlsRef: React.MutableRefObject<any>;
+  cb0: React.MutableRefObject<(X: number[]) => void>;
+  cb1: React.MutableRefObject<(X: number[]) => void>;
+}
 
+function SceneContent({ X0, X1, Xs, overlayXs, overlayColor, activeTarget, gizmoMode, isDragging, controlsRef, cb0, cb1 }: ContentProps) {
   const ref0 = useRef<THREE.Group>(null);
   const ref1 = useRef<THREE.Group>(null);
   const refS = useRef<THREE.Group>(null);
   const refO = useRef<THREE.Group>(null);
-  const controlsRef = useRef<any>(null);
-  const isDragging  = useRef(false);
 
-  const cb0 = useRef(onX0Change);
-  const cb1 = useRef(onX1Change);
-  useEffect(() => { cb0.current = onX0Change; });
-  useEffect(() => { cb1.current = onX1Change; });
+  // Keep latest prop values accessible in useFrame
+  const X0Ref = useRef(X0);
+  const X1Ref = useRef(X1);
+  const XsRef = useRef(Xs);
+  const overlayRef = useRef(overlayXs);
+  X0Ref.current = X0;
+  X1Ref.current = X1;
+  XsRef.current = Xs;
+  overlayRef.current = overlayXs;
 
-  const x0Key = X0.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (ref0.current && !isDragging.current) applyX4(ref0.current, X0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x0Key]);
+  // Sync React state → Three.js objects every frame (useFrame runs after R3F commits)
+  useFrame(() => {
+    if (!isDragging.current) {
+      if (ref0.current) applyX4(ref0.current, X0Ref.current);
+      if (ref1.current) applyX4(ref1.current, X1Ref.current);
+    }
+    if (refS.current) applyX4(refS.current, XsRef.current);
+    if (refO.current && overlayRef.current) applyX4(refO.current, overlayRef.current);
+  });
 
-  const x1Key = X1.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (ref1.current && !isDragging.current) applyX4(ref1.current, X1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [x1Key]);
-
-  const xsKey = Xs.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (refS.current) applyX4(refS.current, Xs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xsKey]);
-
-  const xoKey = overlayXs ? overlayXs.map(v => v.toFixed(8)).join(',') : '';
-  useEffect(() => {
-    if (refO.current && overlayXs) applyX4(refO.current, overlayXs);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [xoKey]);
-
+  // Register mouseDown/mouseUp on TransformControls
   useEffect(() => {
     const ctrl = controlsRef.current;
     if (!ctrl) return;
@@ -99,28 +101,55 @@ export default function SE3Scene({ X0, X1, Xs, onX0Change, onX1Change, overlayXs
       ctrl.removeEventListener('mouseDown', onDown);
       ctrl.removeEventListener('mouseUp',   onUp);
     };
-  }, [activeTarget, gizmoMode]);
+  }, [activeTarget, gizmoMode, controlsRef, isDragging, cb0, cb1]);
 
   const activeRef = activeTarget === 'start' ? ref0 : ref1;
   const activeCb  = activeTarget === 'start' ? cb0  : cb1;
 
   return (
+    <>
+      <group ref={ref0}><PoseObject color="#4a9eff" opacity={0.6} /></group>
+      <group ref={ref1}><PoseObject color="#ff6b6b" opacity={0.6} /></group>
+      <group ref={refS}><PoseObject color="#51cf66" opacity={1}   /></group>
+      {overlayXs && <group ref={refO}><PoseObject color={overlayColor} opacity={0.7} wireframe /></group>}
+
+      <TransformControls
+        ref={controlsRef}
+        object={activeRef as React.MutableRefObject<THREE.Object3D>}
+        mode={gizmoMode}
+        onObjectChange={() => {
+          if (activeRef.current) activeCb.current(readX4(activeRef.current));
+        }}
+      />
+    </>
+  );
+}
+
+export default function SE3Scene({ X0, X1, Xs, onX0Change, onX1Change, overlayXs, overlayColor = '#ffd43b' }: Props) {
+  const [activeTarget, setActiveTarget] = useState<'start' | 'end'>('start');
+  const [gizmoMode, setGizmoMode]       = useState<'translate' | 'rotate'>('rotate');
+
+  const controlsRef = useRef<any>(null);
+  const isDragging  = useRef(false);
+
+  const cb0 = useRef(onX0Change);
+  const cb1 = useRef(onX1Change);
+  useEffect(() => { cb0.current = onX0Change; });
+  useEffect(() => { cb1.current = onX1Change; });
+
+  return (
     <div>
       <Scene3D height={460}>
-        {/* Target groups — TransformControls must NOT be nested inside these */}
-        <group ref={ref0}><PoseObject color="#4a9eff" opacity={0.6} /></group>
-        <group ref={ref1}><PoseObject color="#ff6b6b" opacity={0.6} /></group>
-        <group ref={refS}><PoseObject color="#51cf66" opacity={1}   /></group>
-        {overlayXs && <group ref={refO}><PoseObject color={overlayColor} opacity={0.7} wireframe /></group>}
-
-        {/* TransformControls as a SIBLING in the scene tree */}
-        <TransformControls
-          ref={controlsRef}
-          object={activeRef as React.MutableRefObject<THREE.Object3D>}
-          mode={gizmoMode}
-          onObjectChange={() => {
-            if (activeRef.current) activeCb.current(readX4(activeRef.current));
-          }}
+        <SceneContent
+          X0={X0} X1={X1} Xs={Xs}
+          overlayXs={overlayXs}
+          overlayColor={overlayColor}
+          activeTarget={activeTarget}
+          gizmoMode={gizmoMode}
+          isDragging={isDragging}
+          controlsRef={controlsRef}
+          cb0={cb0}
+          cb1={cb1}
         />
       </Scene3D>
 

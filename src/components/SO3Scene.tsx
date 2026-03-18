@@ -1,11 +1,13 @@
 // SO(3) 3D scene — rotation only
 //
 // FIX: TransformControls must be a SIBLING of the target group in the R3F tree,
-// NOT a child. Being a child causes circular updateMatrixWorld calls:
-//   group.updateMatrixWorld() → iterates children → TransformControls.updateMatrixWorld()
-//   → TransformControls calls this.object.updateMatrixWorld() → parent group → loop
+// NOT a child. Being a child causes circular updateMatrixWorld calls.
+//
+// FIX 2: useEffect (outside Canvas) fires before R3F sets refs. Use useFrame
+// (inside Canvas) to sync React state → Three.js objects, guaranteed after R3F commits.
 
 import { useRef, useState, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene3D from './Scene3D';
@@ -35,46 +37,42 @@ function quatToR3(q: THREE.Quaternion): number[] {
   return [e[0],e[4],e[8], e[1],e[5],e[9], e[2],e[6],e[10]];
 }
 
-export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change }: Props) {
-  const [activeTarget, setActiveTarget] = useState<'start' | 'end'>('start');
+// Inner component lives INSIDE Canvas so useFrame works and refs are always set
+interface ContentProps {
+  R0: number[];
+  R1: number[];
+  Rs: number[];
+  activeTarget: 'start' | 'end';
+  isDragging: React.MutableRefObject<boolean>;
+  controlsRef: React.MutableRefObject<any>;
+  cb0: React.MutableRefObject<(R: number[]) => void>;
+  cb1: React.MutableRefObject<(R: number[]) => void>;
+}
 
+function SceneContent({ R0, R1, Rs, activeTarget, isDragging, controlsRef, cb0, cb1 }: ContentProps) {
   const ref0 = useRef<THREE.Group>(null);
   const ref1 = useRef<THREE.Group>(null);
   const refS = useRef<THREE.Group>(null);
-  const controlsRef = useRef<any>(null);
-  const isDragging = useRef(false);
 
-  // Keep fresh callbacks to avoid stale closures in event handlers
-  const cb0 = useRef(onR0Change);
-  const cb1 = useRef(onR1Change);
-  useEffect(() => { cb0.current = onR0Change; });
-  useEffect(() => { cb1.current = onR1Change; });
+  // Keep latest prop values accessible in useFrame without stale closures
+  const R0Ref = useRef(R0);
+  const R1Ref = useRef(R1);
+  const RsRef = useRef(Rs);
+  R0Ref.current = R0;
+  R1Ref.current = R1;
+  RsRef.current = Rs;
 
-  // Sync R0 → quaternion (value-based dep to avoid running every render)
-  const r0Key = R0.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (ref0.current && !isDragging.current)
-      ref0.current.quaternion.copy(r3ToQuat(R0));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r0Key]);
+  // Sync React state → Three.js objects every frame.
+  // useFrame is guaranteed to run after R3F commits, so refs are always set.
+  useFrame(() => {
+    if (!isDragging.current) {
+      if (ref0.current) ref0.current.quaternion.copy(r3ToQuat(R0Ref.current));
+      if (ref1.current) ref1.current.quaternion.copy(r3ToQuat(R1Ref.current));
+    }
+    if (refS.current) refS.current.quaternion.copy(r3ToQuat(RsRef.current));
+  });
 
-  // Sync R1 → quaternion
-  const r1Key = R1.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (ref1.current && !isDragging.current)
-      ref1.current.quaternion.copy(r3ToQuat(R1));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r1Key]);
-
-  // Sync Rs → quaternion (read-only, no isDragging guard needed)
-  const rsKey = Rs.map(v => v.toFixed(8)).join(',');
-  useEffect(() => {
-    if (refS.current)
-      refS.current.quaternion.copy(r3ToQuat(Rs));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rsKey]);
-
-  // Register mouseDown/mouseUp on the TransformControls instance
+  // Register mouseDown/mouseUp on TransformControls
   useEffect(() => {
     const ctrl = controlsRef.current;
     if (!ctrl) return;
@@ -91,28 +89,51 @@ export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change }: Props) 
       ctrl.removeEventListener('mouseDown', onDown);
       ctrl.removeEventListener('mouseUp',   onUp);
     };
-  }, [activeTarget]);
+  }, [activeTarget, controlsRef, isDragging, cb0, cb1]);
 
   const activeRef = activeTarget === 'start' ? ref0 : ref1;
   const activeCb  = activeTarget === 'start' ? cb0  : cb1;
 
   return (
+    <>
+      <group ref={ref0}><PoseObject color="#4a9eff" opacity={0.6} /></group>
+      <group ref={ref1}><PoseObject color="#ff6b6b" opacity={0.6} /></group>
+      <group ref={refS}><PoseObject color="#51cf66" opacity={1}   /></group>
+
+      <TransformControls
+        ref={controlsRef}
+        object={activeRef as React.MutableRefObject<THREE.Object3D>}
+        mode="rotate"
+        onObjectChange={() => {
+          if (activeRef.current)
+            activeCb.current(quatToR3(activeRef.current.quaternion));
+        }}
+      />
+    </>
+  );
+}
+
+export default function SO3Scene({ R0, R1, Rs, onR0Change, onR1Change }: Props) {
+  const [activeTarget, setActiveTarget] = useState<'start' | 'end'>('start');
+
+  const controlsRef = useRef<any>(null);
+  const isDragging  = useRef(false);
+
+  const cb0 = useRef(onR0Change);
+  const cb1 = useRef(onR1Change);
+  useEffect(() => { cb0.current = onR0Change; });
+  useEffect(() => { cb1.current = onR1Change; });
+
+  return (
     <div>
       <Scene3D height={460}>
-        {/* Target groups — TransformControls must NOT be children of these */}
-        <group ref={ref0}><PoseObject color="#4a9eff" opacity={0.6} /></group>
-        <group ref={ref1}><PoseObject color="#ff6b6b" opacity={0.6} /></group>
-        <group ref={refS}><PoseObject color="#51cf66" opacity={1}   /></group>
-
-        {/* TransformControls as a SIBLING in the scene tree */}
-        <TransformControls
-          ref={controlsRef}
-          object={activeRef as React.MutableRefObject<THREE.Object3D>}
-          mode="rotate"
-          onObjectChange={() => {
-            if (activeRef.current)
-              activeCb.current(quatToR3(activeRef.current.quaternion));
-          }}
+        <SceneContent
+          R0={R0} R1={R1} Rs={Rs}
+          activeTarget={activeTarget}
+          isDragging={isDragging}
+          controlsRef={controlsRef}
+          cb0={cb0}
+          cb1={cb1}
         />
       </Scene3D>
 
