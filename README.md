@@ -1,5 +1,7 @@
 # 🎯 interp
 
+![interp banner](./public/banner.png)
+
 > **Interactive visualization and exploration of advanced interpolation techniques in robotics and 3D graphics**
 
 [![Built with React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
